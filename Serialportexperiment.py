@@ -11,7 +11,7 @@ import math
 from std_msgs.msg import Int32, Float32
 rospy.init_node('imu_data', anonymous = False)
 IMU = rospy.Publisher('/IMU_angle', Float32, queue_size = 5)
-
+rate = rospy.Rate(0.5)
 
 def conv_rad_to_deg_set(x,dec_place): # convert radian to degree
     return round(float(x)*180/3.1416,dec_place)
@@ -98,8 +98,10 @@ def IMU_shut_down(port):
     
 #IMU_read = space_read(IMU_ser,IMU_read)
 def IMU_execute(IMU_ser,IMU_read):
+
     while(True):
-        print('111111111')
+        #print('111111111')
+        rate.sleep()
         IMU_read = space_read(IMU_ser,IMU_read)
         #print('Raw IMU data: '+ IMU_read)
         angle = -math.atan2(float(IMU_read[7]),float(IMU_read[8])) # convert raw data to angle
@@ -109,8 +111,9 @@ def IMU_execute(IMU_ser,IMU_read):
         IMU.publish(dat_deg)
         print(dat_deg)
 
-
-
+        if (dat_deg>60):
+            IMU_shut_down(IMU_ser)
+   
 
 if __name__ == "__main__": 
     try: 
