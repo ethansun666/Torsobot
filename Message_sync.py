@@ -4,6 +4,8 @@ import rospy
 
 import message_filters
 from std_msgs.msg import Int32, Float32
+from pololu_drv8835_rpi import motors
+
 
 rospy.init_node('message_sync', anonymous=False)
 
@@ -15,42 +17,69 @@ k_d_angle = 1 # derivatibe gain for angle control
 k_p_speed = 15 # proportional gain for speed control (60)
 k_i_speed = 35 # integral gain for speed control(30)
 
-time_old= 0.0
-time_current = rospy.get_rostime()
 
-def update_current_wheel_speed(msg_in):
-    global current_wheel_speed
-    current_wheel_speed = msg_in.data
-    
-def update_imu_angle(msg_in):
-    global current_imu_angle
-    current_imu_angle = msg_in.data
+
+def drive_motor(speed): # send speed command to motor
+    max_speed = 380
+    if speed > max_speed:
+        drive_speed = max_speed
+    elif speed < -max_speed:
+        drive_speed = -max_speed
+    else:
+        drive_speed = round(speed)
+    motors.motor1.setSpeed(int(drive_speed))
+    return drive_speed
+
 def PID_control(IMU_message,Encoder_message):
     
     global current_wheel_speed
     global current_imu_angle
-    speed_error_cum = 0.0
+    global speed_error_cum
+    global angle_error_cum
+    global time_current
+
+    current_wheel_speed = Encoder_message.data
+    angle_prev = current_imu_angle
+    current_imu_angle = IMU_message.data
     
+        
+    #### time update
+    time_old = time_current # set previous time reading
+    time_current = rospy.get_rostime() # set current time reading
+    dt = time_current - time_old # time step
     
-    while True:
+    # P
+    speed_error = speed_desired - current_wheel_speed
         
-        #### time update
-        time_old = time_current # set previous time reading
-        time_current = rospy.get_rostime() # set current time reading
-        dt = time_current - time_old # time step
+    # I
+    speed_error_cum += speed_error * dt
+    
+    # Effort
+    # not sure what speed_direction_comp is used for
+    angle_desired = 1 * (k_p_speed * speed_error + k_i_speed * speed_error_cum)
         
+    if current_imu_angle <= 90 and current_imu_angle >= -90:
         # P
-        speed_error = speed_desired - current_wheel_speed
-        
+        angle_error = angle_desired - current_imu_angle
         # I
-        speed_error_cum += speed_error * dt
+        angle_error_cum += angle_error*dt
+        # D
+        angle_diff = (angle_prev - current_imu_angle)/dt
         
         # Effort
-        # not sure what speed_direction_comp is used for
-        angle_desired = 1 * (k_p_speed * speed_error + k_i_speed * speed_error_cum)
-    
+        motor_output = -1*(k_p_angle*angle_error + k_i_angle*angle_error_cum + k_d_angle*angle_diff)
+        drive_motor(motor_output)
 
 def message_sync():
+
+    global speed_error_cum
+    global angle_error_cum
+    global time_current
+    speed_error_cum = 0.0
+    angle_error_cum = 0.0
+    
+    time_current = rospy.get_rostime()
+    
     IMU_message = message_filters.Subscriber('/IMU_angle', Float32)
     Encoder_message = message_filters.Subscriber('/Encoder_data', Float32)
     
